@@ -1,0 +1,60 @@
+let
+    // Connect to SharePoint and find the Excel file
+    Source = SharePoint.Files("https://petronas.sharepoint.com/teams/ts_peth_financesustainabilit", [ApiVersion = 15]),
+
+    // Filter to get only your specific file
+    FilteredFiles = Table.SelectRows(Source, each [Name] = "Carbon Pricing PBI.xlsx"),
+
+    // Get the binary content of the file
+    File = FilteredFiles{0}[Content],
+
+    // Load the Excel workbook
+    ExcelData = Excel.Workbook(File, null, true),
+
+    // Get the sheet named "World Bank Excel"
+    WorldBankSheet = ExcelData{[Item="World Bank Excel", Kind="Sheet"]}[Data],
+    #"Promoted Headers" = Table.PromoteHeaders(WorldBankSheet, [PromoteAllScalars=true]),
+    #"Changed Type" = Table.TransformColumnTypes(#"Promoted Headers",{{"Name", type text}, {"Date created", type datetime}, {"Unique ID", type text}, {"Instrument name", type text}, {"Type", type text}, {"Status", type text}, {"Jurisdiction covered", type text}, {"Price on 1 April", type text}, {"Gases covered", type text}, {"Electricity and heat", type text}, {"Industry", type text}, {"Mining and extractives", type text}, {"Transport", type text}, {"Aviation", type text}, {"Buildings", type text}, {"Agriculture, forestry and fishing fuel use", type text}, {"Agricultural emissions", type text}, {"Waste", type text}, {"LULUCF", type text}, {"Fuels covered", type text}, {"Point of regulation", type text}, {"Description", type text}, {"Coverage", type text}, {"Compliance", type text}, {"Last Updated", type text}}),
+    #"Duplicated Column" = Table.DuplicateColumn(#"Changed Type", "Price on 1 April", "Price on 1 April - Copy"),
+    #"Reordered Columns" = Table.ReorderColumns(#"Duplicated Column",{"Name", "Date created", "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", "Price on 1 April - Copy", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"}),
+    #"Added Custom" = Table.AddColumn(#"Reordered Columns", "Price", each 
+    if [Price on 1 April] <> null and Text.Contains([Price on 1 April], "US$") then 
+        Text.Middle(
+            [Price on 1 April], 
+            Text.PositionOf([Price on 1 April], "US$"), 
+            Text.PositionOfAny(
+                Text.Middle([Price on 1 April], Text.PositionOf([Price on 1 April], "US$")), 
+                {" ", ")"}
+            )
+        )
+    else "0"
+),
+
+    #"Reordered Columns1" = Table.ReorderColumns(#"Added Custom",{"Name", "Date created", "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", "Price", "Price on 1 April - Copy", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"}),
+    #"Removed Columns" = Table.RemoveColumns(#"Reordered Columns1",{"Price on 1 April - Copy"}),
+    #"Split Column by Delimiter" = Table.SplitColumn(#"Removed Columns", "Price", Splitter.SplitTextByEachDelimiter({"$"}, QuoteStyle.Csv, true), {"Price.1", "Price.2"}),
+    #"Changed Type1" = Table.TransformColumnTypes(#"Split Column by Delimiter",{{"Price.1", type text}, {"Price.2", type text}}),
+    #"Removed Columns1" = Table.RemoveColumns(#"Changed Type1",{"Price.1"}),
+    #"Duplicated Column1" = Table.DuplicateColumn(#"Removed Columns1", "Unique ID", "Unique ID - Copy"),
+    #"Reordered Columns2" = Table.ReorderColumns(#"Duplicated Column1",{"Name", "Date created", "Unique ID", "Unique ID - Copy", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", "Price.2", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"}),
+    #"Split Column by Delimiter1" = Table.SplitColumn(#"Reordered Columns2", "Unique ID - Copy", Splitter.SplitTextByDelimiter("_", QuoteStyle.Csv), {"Unique ID - Copy.1", "Unique ID - Copy.2", "Unique ID - Copy.3"}),
+    #"Changed Type2" = Table.TransformColumnTypes(#"Split Column by Delimiter1",{{"Unique ID - Copy.1", type text}, {"Unique ID - Copy.2", type text}, {"Unique ID - Copy.3", type text}}),
+    #"Removed Columns2" = Table.RemoveColumns(#"Changed Type2",{"Unique ID - Copy.1", "Unique ID - Copy.3"}),
+    #"Renamed Columns" = Table.RenameColumns(#"Removed Columns2",{{"Unique ID - Copy.2", "Iso Code"}, {"Price.2", "Price"}}),
+    #"Filtered Rows" = Table.SelectRows(#"Renamed Columns", each 
+    let statusLower = Text.Lower([Status])
+    in Text.Contains(statusLower, "implemented") 
+       or Text.Contains(statusLower, "abolished") 
+       or Text.Contains(statusLower, "removed")),
+    #"Filtered Rows1" = Table.SelectRows(#"Filtered Rows", each [Unique ID] <> null and [Unique ID] <> ""),
+    #"Renamed Columns1" = Table.RenameColumns(#"Filtered Rows1",{{"Jurisdiction covered", "Country"}}),
+    #"Changed Type3" = Table.TransformColumnTypes(#"Renamed Columns1",{{"Price", type number}}),
+    #"Filtered Underscores" = Table.SelectRows(#"Changed Type3", each List.Count(Text.PositionOfAny([Unique ID], {"_"}, Occurrence.All)) <= 1),
+    #"Filtered Rows2" = Table.SelectRows(#"Filtered Underscores", each ([Type] = "Carbon tax" or [Type] = "Carbon Tax" or [Type] = "ETS" or [Type] = "National Carbon tax" or [Type] = "National ETS")),
+    #"Replaced Value" = Table.ReplaceValue(#"Filtered Rows2","Carbon tax","Carbon Tax",Replacer.ReplaceText,{"Type"}),
+    #"Replaced Value1" = Table.ReplaceValue(#"Replaced Value","National Carbon Tax","Carbon Tax",Replacer.ReplaceText,{"Type"}),
+    #"Replaced Value2" = Table.ReplaceValue(#"Replaced Value1","National ETS","ETS",Replacer.ReplaceText,{"Type"}),
+    #"Cleaned Status" = Table.TransformColumns(#"Replaced Value2", {{"Status", each if Text.Contains(_, "Implemented") and Text.Contains(_, "Abolished") then if Text.PositionOf(_, "Abolished") > Text.PositionOf(_, "Implemented") then "Abolished" else "Implemented" else _, type text}}),
+#"Added Flag URL" = Table.AddColumn(#"Cleaned Status", "Flag URL", each "https://flagcdn.com/w160/" & Text.Lower([Iso Code]) & ".png"),
+    #"Replaced Value3" = Table.ReplaceValue(#"Added Flag URL","UK","GB",Replacer.ReplaceText,{"Iso Code"})
+in #"Replaced Value3"
