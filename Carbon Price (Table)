@@ -1,0 +1,10 @@
+let
+    Source = Excel.Workbook(Web.Contents("https://petronas.sharepoint.com/teams/ts_peth_financesustainabilit/Shared%20Documents/General/2.%20Carbon%20Management/Carbon%20Cost/Carbon%20Pricing%20PBI/Base%20Data%20(For%20Refresh)/Carbon%20Pricing%20PBI.xlsx"), null, true),
+    World_Bank_Data_Table = Source{[Item="World_Bank_Data",Kind="Table"]}[Data],
+    #"Changed Type" = Table.TransformColumnTypes(World_Bank_Data_Table,{{"Unique ID", type text}, {"Iso Code", type text}, {"Instrument Name", type text}, {"Type of Instrument", type text}, {"Status", type text}, {"Year", Int64.Type}, {"Scope", type text}, {"Juridisction", type text}, {"Region", type text}, {"Level of Income", type text}, {"Price", Int64.Type}, {"Covered Gas", type text}}),
+    #"Added Index" = Table.AddIndexColumn(#"Changed Type", "Index", 1, 1, Int64.Type),
+    #"Sorted Rows" = Table.Sort(#"Added Index",{{"Price", Order.Ascending}}),
+    #"Removed Columns" = Table.RemoveColumns(#"Sorted Rows",{"Index"}),
+    #"Added Index1" = Table.AddIndexColumn(#"Removed Columns", "Index", 1, 1, Int64.Type)
+in
+    #"Added Index1"
