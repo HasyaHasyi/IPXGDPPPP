@@ -1,0 +1,62 @@
+let
+    // Step 1: Get all Excel files from the SharePoint folder
+    Source = SharePoint.Files("https://petronas.sharepoint.com/teams/ts_peth_financesustainabilit", [ApiVersion = 15]),
+
+    // Step 2: Filter to only keep files in the folder containing "Excel Data"
+    // Files are selected where the folder path contains "Excel Data" and file extension is .xlsx
+    FilteredFiles = Table.SelectRows(Source, each Text.Contains([Folder Path], "Excel Data") and Text.EndsWith([Extension], ".xlsx")),
+
+    // Step 3: Add a custom column to extract data from the "Compliance_Gen Info" sheet in each file
+    GetComplianceSheet = Table.AddColumn(FilteredFiles, "ComplianceData", each
+        let
+            // Read the Excel content (workbook)
+            ExcelContent = Excel.Workbook([Content], null, true),
+            // Try to access the "Compliance_Gen Info" sheet
+            ComplianceSheet = try ExcelContent{[Item="Compliance_Gen Info", Kind="Sheet"]}[Data] otherwise null,
+            // Only process if the sheet exists
+            Cleaned = if ComplianceSheet <> null then
+                let
+                    // Step 4: Get Last Updated info from A1 (first cell in the sheet)
+                    LastUpdated = ComplianceSheet{0}[Column1],
+                    // Skip the top row (headers are in row 2), promote headers
+                    RemovedTopRow = Table.Skip(ComplianceSheet, 1),
+                    PromotedHeaders = Table.PromoteHeaders(RemovedTopRow, [PromoteAllScalars=true]),
+
+                    // Step 5: Select only the required columns
+                    ColumnsToKeep = {
+                        "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April",
+                        "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport",
+                        "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions",
+                        "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance"
+                    },
+
+                    // Keep only the selected columns (intersection of columns in the sheet and our list)
+                    Selected = Table.SelectColumns(PromotedHeaders, List.Intersect({ColumnsToKeep, Table.ColumnNames(PromotedHeaders)})),
+
+                    // Step 6: Add "Last Updated" and "File Name" columns for tracking purposes
+                    AddUpdated = Table.AddColumn(Selected, "Last Updated", each LastUpdated),
+                    AddFileName = Table.AddColumn(AddUpdated, "File", each [Name])
+                in
+                    AddFileName
+            else
+                null
+        in
+            Cleaned
+    ),
+
+    // Step 7: Remove rows where "ComplianceData" is null (no valid sheet found)
+    RemoveNulls = Table.SelectRows(GetComplianceSheet, each [ComplianceData] <> null),
+
+    // Step 8: Expand the "ComplianceData" column into separate rows (flattening the data)
+    Expanded = Table.ExpandTableColumn(RemoveNulls, "ComplianceData", {
+        "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April",
+        "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport",
+        "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions",
+        "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance",
+        "Last Updated", "File"
+    }),
+
+    // Step 9: Remove unnecessary columns that are not needed for final output (File, Content, etc.)
+    #"Removed Columns" = Table.RemoveColumns(Expanded,{"File", "Content", "Folder Path", "Attributes", "Date modified", "Date accessed", "Extension"})
+in
+    #"Removed Columns"
