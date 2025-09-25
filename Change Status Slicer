@@ -1,0 +1,12 @@
+ChangeStatus_Slicer = 
+DATATABLE(
+    "ChangeStatus", STRING,
+    {
+        {"Status Changed"},
+        {"Price Increased"},
+        {"Price Decreased"},
+        {"Status Changed & Price Increased"},
+        {"Status Changed & Price Decreased"},
+        {"No Change"}
+    }
+)
