@@ -1,28 +1,28 @@
 let
-    // Step 1: Get all Excel files from the SharePoint folder
+    // Step 1: Retrieve all Excel files from the designated SharePoint folder
     Source = SharePoint.Files("https://petronas.sharepoint.com/teams/ts_peth_financesustainabilit", [ApiVersion = 15]),
 
-    // Step 2: Filter to only keep files in the folder containing "Excel Data"
-    // Files are selected where the folder path contains "Excel Data" and file extension is .xlsx
+    // Step 2: Filter to include only Excel files located in the "Excel Data" folder
+    // The query ensures that only files with the extension .xlsx and located in the "Excel Data" folder are processed
     FilteredFiles = Table.SelectRows(Source, each Text.Contains([Folder Path], "Excel Data") and Text.EndsWith([Extension], ".xlsx")),
 
-    // Step 3: Add a custom column to extract data from the "Compliance_Gen Info" sheet in each file
+    // Step 3: Add a custom column to extract data from the "Compliance_Gen Info" sheet within each file
     GetComplianceSheet = Table.AddColumn(FilteredFiles, "ComplianceData", each
         let
-            // Read the Excel content (workbook)
+            // Read the content of each Excel file
             ExcelContent = Excel.Workbook([Content], null, true),
-            // Try to access the "Compliance_Gen Info" sheet
+            // Attempt to retrieve the "Compliance_Gen Info" sheet, if available
             ComplianceSheet = try ExcelContent{[Item="Compliance_Gen Info", Kind="Sheet"]}[Data] otherwise null,
-            // Only process if the sheet exists
+            // Proceed only if the sheet is present
             Cleaned = if ComplianceSheet <> null then
                 let
-                    // Step 4: Get Last Updated info from A1 (first cell in the sheet)
+                    // Step 4: Extract the "Last Updated" value from cell A1 (first row)
                     LastUpdated = ComplianceSheet{0}[Column1],
-                    // Skip the top row (headers are in row 2), promote headers
+                    // Skip the first row (headers are located in the second row), and promote the second row to headers
                     RemovedTopRow = Table.Skip(ComplianceSheet, 1),
                     PromotedHeaders = Table.PromoteHeaders(RemovedTopRow, [PromoteAllScalars=true]),
 
-                    // Step 5: Select only the required columns
+                    // Step 5: Select only the necessary columns for further processing
                     ColumnsToKeep = {
                         "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April",
                         "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport",
@@ -30,10 +30,10 @@ let
                         "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance"
                     },
 
-                    // Keep only the selected columns (intersection of columns in the sheet and our list)
+                    // Retain only the columns that match the predefined list
                     Selected = Table.SelectColumns(PromotedHeaders, List.Intersect({ColumnsToKeep, Table.ColumnNames(PromotedHeaders)})),
 
-                    // Step 6: Add "Last Updated" and "File Name" columns for tracking purposes
+                    // Step 6: Add "Last Updated" and "File Name" columns for data tracking purposes
                     AddUpdated = Table.AddColumn(Selected, "Last Updated", each LastUpdated),
                     AddFileName = Table.AddColumn(AddUpdated, "File", each [Name])
                 in
@@ -44,10 +44,10 @@ let
             Cleaned
     ),
 
-    // Step 7: Remove rows where "ComplianceData" is null (no valid sheet found)
+    // Step 7: Remove rows where no valid data was found in the "Compliance_Gen Info" sheet
     RemoveNulls = Table.SelectRows(GetComplianceSheet, each [ComplianceData] <> null),
 
-    // Step 8: Expand the "ComplianceData" column into separate rows (flattening the data)
+    // Step 8: Expand the "ComplianceData" column into individual rows to flatten the table
     Expanded = Table.ExpandTableColumn(RemoveNulls, "ComplianceData", {
         "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April",
         "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport",
@@ -56,7 +56,7 @@ let
         "Last Updated", "File"
     }),
 
-    // Step 9: Remove unnecessary columns that are not needed for final output (File, Content, etc.)
+    // Step 9: Remove any unnecessary columns, such as metadata columns (File, Content, Folder Path, etc.)
     #"Removed Columns" = Table.RemoveColumns(Expanded,{"File", "Content", "Folder Path", "Attributes", "Date modified", "Date accessed", "Extension"})
 in
     #"Removed Columns"
