@@ -1,12 +1,12 @@
 ChangeStatus_Slicer = 
 DATATABLE(
-    "ChangeStatus", STRING,
+    "ChangeStatus", STRING,   // The column name and its data type
     {
-        {"Status Changed"},
-        {"Price Increased"},
-        {"Price Decreased"},
-        {"Status Changed & Price Increased"},
-        {"Status Changed & Price Decreased"},
-        {"No Change"}
+        {"Status Changed"},  // Row 1: status option
+        {"Price Increased"}, // Row 2: price change option
+        {"Price Decreased"}, // Row 3: price drop option
+        {"Status Changed & Price Increased"}, // Row 4: combined status and price increase
+        {"Status Changed & Price Decreased"}, // Row 5: combined status and price decrease
+        {"No Change"} // Row 6: no change in status or price
     }
 )
