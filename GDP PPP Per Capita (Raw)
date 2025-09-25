@@ -1,0 +1,26 @@
+let
+    Source = SharePoint.Files("https://petronas.sharepoint.com/teams/ts_peth_financesustainabilit", [ApiVersion = 15]),
+    FilteredFiles = Table.SelectRows(Source, each Text.Contains([Folder Path], "Updated Data")),
+    ImportExcel = Table.AddColumn(FilteredFiles, "ExcelData", each Excel.Workbook([Content], true)),
+    ExpandedTables = Table.ExpandTableColumn(ImportExcel, "ExcelData", {"Name", "Data", "Kind", "Item"}, {"TableName", "Data", "Kind", "SheetName"}),
+    FilteredTargetTables = Table.SelectRows(ExpandedTables, each [Kind] = "Table" and [TableName] = "GDP_PPP_Per_Capita"),
+    ExtractColumns = Table.AddColumn(FilteredTargetTables, "FormattedData", each 
+    Table.SelectColumns([Data], {
+        "Country ID", "Country Name", "Country ISO Code", "Year", "GDP PPP per Capita"
+    })
+),
+
+    FilteredFormatted = Table.SelectRows(ExtractColumns, each [FormattedData] <> null),
+    WithMetadata = Table.AddColumn(FilteredFormatted, "FormattedWithMetadata", each 
+        Table.AddColumn(
+            Table.AddColumn([FormattedData], "Source File", (x) => [Name]),
+            "Sheet Name", (x) => [SheetName]
+        )
+    ),
+    CombinedAll = Table.Combine(WithMetadata[FormattedWithMetadata]),
+    #"Filtered Rows" = Table.SelectRows(CombinedAll, each true),
+    #"Renamed Columns" = Table.RenameColumns(#"Filtered Rows",{{"Country ID", "Iso Code"}, {"Country Name", "Country"}}),
+    #"Filtered Rows1" = Table.SelectRows(#"Renamed Columns", each true),
+    #"Changed Type" = Table.TransformColumnTypes(#"Filtered Rows1",{{"GDP PPP per Capita", type number}})
+in
+    #"Changed Type"
