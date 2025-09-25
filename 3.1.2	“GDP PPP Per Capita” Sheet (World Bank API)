@@ -54,4 +54,59 @@ let
         let
             Raw = Json.Document(Web.Contents(
                 "https://api.worldbank.org/v2/country/all/indicator/NY.GDP.PCAP.PP.CD", 
-                [Query = [format = "json", per_page = "100_]()]()
+                [Query = [format = "json", per_page = "1000", page = Text.From(page)]]
+            )),
+            Data = Raw{1}
+        in
+            Data,
+
+    // Combine all pages of GDP data into one list
+    AllPages = List.Combine(List.Transform(PageNumbers, each GetPage(_))),
+
+    // Convert the list of data into a table
+    #"Converted to Table" = Table.FromList(AllPages, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+
+    // Expand and clean the columns
+    #"Expanded Column1" = Table.ExpandRecordColumn(#"Converted to Table", "Column1", {
+        "indicator", "country", "countryiso3code", "date", "value", "unit", "obs_status", "decimal"
+    }),
+    #"Expanded Column1.country" = Table.ExpandRecordColumn(#"Expanded Column1", "country", {"id", "value"}, {"Country ID", "Country Name"}),
+    #"Expanded Column1.indicator" = Table.ExpandRecordColumn(#"Expanded Column1.country", "indicator", {"id", "value"}, {"Indicator ID", "Indicator Name"}),
+
+    // Remove unnecessary columns
+    #"Removed Columns" = Table.RemoveColumns(#"Expanded Column1.indicator", {"Indicator ID", "Indicator Name", "unit", "obs_status", "decimal"}),
+
+    // Rename and clean the columns
+    #"Renamed Columns" = Table.RenameColumns(#"Removed Columns", {
+        {"countryiso3code", "Country ISO Code"},
+        {"date", "Year"},
+        {"value", "GDP PPP per Capita"}
+    }),
+    #"Converted GDP" = Table.TransformColumns(#"Renamed Columns", {
+        {"GDP PPP per Capita", each try Number.FromText(Text.From(_)) otherwise null}
+    }),
+
+    // Step 4: Filter to keep data from 2020 onwards
+    #"Changed Types" = Table.TransformColumnTypes(#"Converted GDP", {
+        {"Country ID", type text},
+        {"Country Name", type text},
+        {"Country ISO Code", type text},
+        {"Year", Int64.Type}
+    }),
+
+    // Step 5: Clean and merge GDP and GNI data
+    CleanGDP = Table.TransformColumns(#"Changed Types", {{"Country ISO Code", Text.Upper, type text}}),
+    CleanGNI = Table.TransformColumns(GniTyped, {{"Country ISO Code", Text.Upper, type text}}),
+
+    // Merge GDP and GNI data using "Country ISO Code" and "Year"
+    #"Merged GNI per Capita" = Table.NestedJoin(
+        CleanGDP,
+        {"Country ISO Code", "Year"},
+        CleanGNI,
+        {"Country ISO Code", "Year"},
+        "GNIData",
+        JoinKind.LeftOuter
+    ),
+    #"Expanded GNI per Capita" = Table.ExpandTableColumn(#"Merged GNI per Capita", "GNIData", {"GNI per Capita"}, {"GNI per Capita"})
+in
+    #"Expanded GNI per Capita"
