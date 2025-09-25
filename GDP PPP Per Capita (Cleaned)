@@ -1,0 +1,40 @@
+let
+    // Step 1: Reference both tables
+    GDP = #"GDP PPP Per Capita (Raw)",
+    ThresholdsRaw = #"Income Thresholds",
+
+    // Step 2: Remove null GDP values
+    CleanGDP = Table.SelectRows(GDP, each [#"GDP PPP per Capita"] <> null),
+
+    // Step 3: Ensure Year is text in both tables
+    Thresholds = Table.TransformColumnTypes(ThresholdsRaw, {{"Year", type text}}),
+    CleanGDPTextYear = Table.TransformColumnTypes(CleanGDP, {{"Year", type text}}),
+
+    // Step 4: Join on Year (cross join)
+    JoinOnYear = Table.Join(CleanGDPTextYear, "Year", Thresholds, "Year", JoinKind.Inner),
+
+    // Step 5: Filter where GDP fits Min and Max thresholds
+    Filtered = Table.SelectRows(JoinOnYear, each 
+        [#"GDP PPP per Capita"] >= [MinGDP] and 
+        ([MaxGDP] = null or [#"GDP PPP per Capita"] < [MaxGDP])
+    ),
+
+    // Step 6: Select only what you want to keep (original columns + income group)
+    Selected = Table.SelectColumns(Filtered, {
+        "Country", 
+        "Country ISO Code", 
+        "Year", 
+        "GDP PPP per Capita", 
+        "Income Group",
+        "Iso Code"
+    }),
+
+    // Step 7: Rename Income Group
+    Renamed = Table.RenameColumns(Selected, {
+        {"Income Group", "Assigned Income Group"}
+    }),
+
+    // Step 8: Add Year_IncomeGroup key
+    WithJoinKey = Table.AddColumn(Renamed, "Year_IncomeGroup", each [Year] & "_" & [Assigned Income Group], type text)
+in
+    WithJoinKey
