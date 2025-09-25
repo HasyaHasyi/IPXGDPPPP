@@ -1,60 +1,131 @@
 let
-    // Connect to SharePoint and find the Excel file
+    // Step 1: Connect to SharePoint and locate the specific Excel file
     Source = SharePoint.Files("https://petronas.sharepoint.com/teams/ts_peth_financesustainabilit", [ApiVersion = 15]),
 
-    // Filter to get only your specific file
+    // Step 2: Filter to retrieve only the file named "Carbon Pricing PBI.xlsx"
     FilteredFiles = Table.SelectRows(Source, each [Name] = "Carbon Pricing PBI.xlsx"),
 
-    // Get the binary content of the file
+    // Step 3: Extract the binary content of the Excel file
     File = FilteredFiles{0}[Content],
 
-    // Load the Excel workbook
+    // Step 4: Load the Excel workbook to extract data from the "World Bank Excel" sheet
     ExcelData = Excel.Workbook(File, null, true),
-
-    // Get the sheet named "World Bank Excel"
     WorldBankSheet = ExcelData{[Item="World Bank Excel", Kind="Sheet"]}[Data],
-    #"Promoted Headers" = Table.PromoteHeaders(WorldBankSheet, [PromoteAllScalars=true]),
-    #"Changed Type" = Table.TransformColumnTypes(#"Promoted Headers",{{"Name", type text}, {"Date created", type datetime}, {"Unique ID", type text}, {"Instrument name", type text}, {"Type", type text}, {"Status", type text}, {"Jurisdiction covered", type text}, {"Price on 1 April", type text}, {"Gases covered", type text}, {"Electricity and heat", type text}, {"Industry", type text}, {"Mining and extractives", type text}, {"Transport", type text}, {"Aviation", type text}, {"Buildings", type text}, {"Agriculture, forestry and fishing fuel use", type text}, {"Agricultural emissions", type text}, {"Waste", type text}, {"LULUCF", type text}, {"Fuels covered", type text}, {"Point of regulation", type text}, {"Description", type text}, {"Coverage", type text}, {"Compliance", type text}, {"Last Updated", type text}}),
-    #"Duplicated Column" = Table.DuplicateColumn(#"Changed Type", "Price on 1 April", "Price on 1 April - Copy"),
-    #"Reordered Columns" = Table.ReorderColumns(#"Duplicated Column",{"Name", "Date created", "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", "Price on 1 April - Copy", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"}),
-    #"Added Custom" = Table.AddColumn(#"Reordered Columns", "Price", each 
-    if [Price on 1 April] <> null and Text.Contains([Price on 1 April], "US$") then 
-        Text.Middle(
-            [Price on 1 April], 
-            Text.PositionOf([Price on 1 April], "US$"), 
-            Text.PositionOfAny(
-                Text.Middle([Price on 1 April], Text.PositionOf([Price on 1 April], "US$")), 
-                {" ", ")"}
-            )
-        )
-    else "0"
-),
 
-    #"Reordered Columns1" = Table.ReorderColumns(#"Added Custom",{"Name", "Date created", "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", "Price", "Price on 1 April - Copy", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"}),
+    // Step 5: Promote headers to ensure column names are properly set
+    #"Promoted Headers" = Table.PromoteHeaders(WorldBankSheet, [PromoteAllScalars=true]),
+
+    // Step 6: Change the types of columns to ensure data consistency
+    #"Changed Type" = Table.TransformColumnTypes(#"Promoted Headers",{
+        {"Name", type text}, {"Date created", type datetime}, {"Unique ID", type text}, {"Instrument name", type text}, 
+        {"Type", type text}, {"Status", type text}, {"Jurisdiction covered", type text}, {"Price on 1 April", type text},
+        {"Gases covered", type text}, {"Electricity and heat", type text}, {"Industry", type text}, {"Mining and extractives", type text},
+        {"Transport", type text}, {"Aviation", type text}, {"Buildings", type text}, {"Agriculture, forestry and fishing fuel use", type text},
+        {"Agricultural emissions", type text}, {"Waste", type text}, {"LULUCF", type text}, {"Fuels covered", type text}, 
+        {"Point of regulation", type text}, {"Description", type text}, {"Coverage", type text}, {"Compliance", type text}, 
+        {"Last Updated", type text}
+    }),
+
+    // Step 7: Duplicate the "Price on 1 April" column for further manipulation
+    #"Duplicated Column" = Table.DuplicateColumn(#"Changed Type", "Price on 1 April", "Price on 1 April - Copy"),
+
+    // Step 8: Reorder columns to ensure the correct structure for analysis
+    #"Reordered Columns" = Table.ReorderColumns(#"Duplicated Column",{
+        "Name", "Date created", "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", 
+        "Price on 1 April - Copy", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", 
+        "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", 
+        "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"
+    }),
+
+    // Step 9: Add a custom column to extract the numerical price from the "Price on 1 April" column
+    #"Added Custom" = Table.AddColumn(#"Reordered Columns", "Price", each 
+        if [Price on 1 April] <> null and Text.Contains([Price on 1 April], "US$") then 
+            Text.Middle(
+                [Price on 1 April], 
+                Text.PositionOf([Price on 1 April], "US$"), 
+                Text.PositionOfAny(
+                    Text.Middle([Price on 1 April], Text.PositionOf([Price on 1 April], "US$")), 
+                    {" ", ")"}
+                )
+            )
+        else "0"
+    ),
+
+    // Step 10: Reorder columns to ensure logical flow
+    #"Reordered Columns1" = Table.ReorderColumns(#"Added Custom",{
+        "Name", "Date created", "Unique ID", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", 
+        "Price", "Price on 1 April - Copy", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", 
+        "Transport", "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", 
+        "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"
+    }),
+
+    // Step 11: Remove the redundant "Price on 1 April - Copy" column
     #"Removed Columns" = Table.RemoveColumns(#"Reordered Columns1",{"Price on 1 April - Copy"}),
+
+    // Step 12: Split the "Price" column by the "$" delimiter to separate the price value
     #"Split Column by Delimiter" = Table.SplitColumn(#"Removed Columns", "Price", Splitter.SplitTextByEachDelimiter({"$"}, QuoteStyle.Csv, true), {"Price.1", "Price.2"}),
+
+    // Step 13: Change the data type of the split columns
     #"Changed Type1" = Table.TransformColumnTypes(#"Split Column by Delimiter",{{"Price.1", type text}, {"Price.2", type text}}),
+
+    // Step 14: Remove the unnecessary "Price.1" column
     #"Removed Columns1" = Table.RemoveColumns(#"Changed Type1",{"Price.1"}),
+
+    // Step 15: Duplicate the "Unique ID" column for further manipulation
     #"Duplicated Column1" = Table.DuplicateColumn(#"Removed Columns1", "Unique ID", "Unique ID - Copy"),
-    #"Reordered Columns2" = Table.ReorderColumns(#"Duplicated Column1",{"Name", "Date created", "Unique ID", "Unique ID - Copy", "Instrument name", "Type", "Status", "Jurisdiction covered", "Price on 1 April", "Price.2", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"}),
+
+    // Step 16: Reorder columns again for logical flow
+    #"Reordered Columns2" = Table.ReorderColumns(#"Duplicated Column1",{
+        "Name", "Date created", "Unique ID", "Unique ID - Copy", "Instrument name", "Type", "Status", "Jurisdiction covered", 
+        "Price on 1 April", "Price.2", "Gases covered", "Electricity and heat", "Industry", "Mining and extractives", "Transport", 
+        "Aviation", "Buildings", "Agriculture, forestry and fishing fuel use", "Agricultural emissions", "Waste", "LULUCF", 
+        "Fuels covered", "Point of regulation", "Description", "Coverage", "Compliance", "Last Updated"
+    }),
+
+    // Step 17: Split the "Unique ID - Copy" column by the "_" delimiter
     #"Split Column by Delimiter1" = Table.SplitColumn(#"Reordered Columns2", "Unique ID - Copy", Splitter.SplitTextByDelimiter("_", QuoteStyle.Csv), {"Unique ID - Copy.1", "Unique ID - Copy.2", "Unique ID - Copy.3"}),
+
+    // Step 18: Change the data type of the split columns
     #"Changed Type2" = Table.TransformColumnTypes(#"Split Column by Delimiter1",{{"Unique ID - Copy.1", type text}, {"Unique ID - Copy.2", type text}, {"Unique ID - Copy.3", type text}}),
+
+    // Step 19: Remove unnecessary columns after splitting
     #"Removed Columns2" = Table.RemoveColumns(#"Changed Type2",{"Unique ID - Copy.1", "Unique ID - Copy.3"}),
+
+    // Step 20: Rename the remaining split column for clarity
     #"Renamed Columns" = Table.RenameColumns(#"Removed Columns2",{{"Unique ID - Copy.2", "Iso Code"}, {"Price.2", "Price"}}),
+
+    // Step 21: Filter the data to include only relevant instruments (e.g., "Carbon Tax" and "ETS")
     #"Filtered Rows" = Table.SelectRows(#"Renamed Columns", each 
-    let statusLower = Text.Lower([Status])
-    in Text.Contains(statusLower, "implemented") 
-       or Text.Contains(statusLower, "abolished") 
-       or Text.Contains(statusLower, "removed")),
+        let statusLower = Text.Lower([Status])
+        in Text.Contains(statusLower, "implemented") 
+           or Text.Contains(statusLower, "abolished") 
+           or Text.Contains(statusLower, "removed")),
+
+    // Step 22: Filter out rows with empty "Unique ID" values
     #"Filtered Rows1" = Table.SelectRows(#"Filtered Rows", each [Unique ID] <> null and [Unique ID] <> ""),
+
+    // Step 23: Rename columns for final clarity
     #"Renamed Columns1" = Table.RenameColumns(#"Filtered Rows1",{{"Jurisdiction covered", "Country"}}),
+
+    // Step 24: Change the "Price" column to numeric type for calculations
     #"Changed Type3" = Table.TransformColumnTypes(#"Renamed Columns1",{{"Price", type number}}),
+
+    // Step 25: Filter rows with more than one underscore in the "Unique ID" (to maintain consistency)
     #"Filtered Underscores" = Table.SelectRows(#"Changed Type3", each List.Count(Text.PositionOfAny([Unique ID], {"_"}, Occurrence.All)) <= 1),
+
+    // Step 26: Filter for relevant types of carbon pricing instruments (Carbon Tax or ETS)
     #"Filtered Rows2" = Table.SelectRows(#"Filtered Underscores", each ([Type] = "Carbon tax" or [Type] = "Carbon Tax" or [Type] = "ETS" or [Type] = "National Carbon tax" or [Type] = "National ETS")),
+
+    // Step 27: Clean the "Type" column by replacing inconsistent naming
     #"Replaced Value" = Table.ReplaceValue(#"Filtered Rows2","Carbon tax","Carbon Tax",Replacer.ReplaceText,{"Type"}),
-    #"Replaced Value1" = Table.ReplaceValue(#"Replaced Value","National Carbon Tax","Carbon Tax",Replacer.ReplaceText,{"Type"}),
-    #"Replaced Value2" = Table.ReplaceValue(#"Replaced Value1","National ETS","ETS",Replacer.ReplaceText,{"Type"}),
+
+    // Step 28: Clean the "Status" column to ensure consistency between "Implemented" and "Abolished" statuses
     #"Cleaned Status" = Table.TransformColumns(#"Replaced Value2", {{"Status", each if Text.Contains(_, "Implemented") and Text.Contains(_, "Abolished") then if Text.PositionOf(_, "Abolished") > Text.PositionOf(_, "Implemented") then "Abolished" else "Implemented" else _, type text}}),
-#"Added Flag URL" = Table.AddColumn(#"Cleaned Status", "Flag URL", each "https://flagcdn.com/w160/" & Text.Lower([Iso Code]) & ".png"),
+
+    // Step 29: Add a URL for the country's flag based on its ISO Code
+    #"Added Flag URL" = Table.AddColumn(#"Cleaned Status", "Flag URL", each "https://flagcdn.com/w160/" & Text.Lower([Iso Code]) & ".png"),
+
+    // Step 30: Replace "UK" with "GB" to correct ISO code for the United Kingdom
     #"Replaced Value3" = Table.ReplaceValue(#"Added Flag URL","UK","GB",Replacer.ReplaceText,{"Iso Code"})
-in #"Replaced Value3"
+in
+    #"Replaced Value3"
