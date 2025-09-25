@@ -1,26 +1,48 @@
 let
+    // Step 1: Connect to SharePoint and retrieve files from the "Updated Data" folder
     Source = SharePoint.Files("https://petronas.sharepoint.com/teams/ts_peth_financesustainabilit", [ApiVersion = 15]),
     FilteredFiles = Table.SelectRows(Source, each Text.Contains([Folder Path], "Updated Data")),
-    ImportExcel = Table.AddColumn(FilteredFiles, "ExcelData", each Excel.Workbook([Content], true)),
-    ExpandedTables = Table.ExpandTableColumn(ImportExcel, "ExcelData", {"Name", "Data", "Kind", "Item"}, {"TableName", "Data", "Kind", "SheetName"}),
-    FilteredTargetTables = Table.SelectRows(ExpandedTables, each [Kind] = "Table" and [TableName] = "GDP_PPP_Per_Capita"),
-    ExtractColumns = Table.AddColumn(FilteredTargetTables, "FormattedData", each 
-    Table.SelectColumns([Data], {
-        "Country ID", "Country Name", "Country ISO Code", "Year", "GDP PPP per Capita"
-    })
-),
 
+    // Step 2: Add a column to load the Excel workbook for each file
+    ImportExcel = Table.AddColumn(FilteredFiles, "ExcelData", each Excel.Workbook([Content], true)),
+
+    // Step 3: Expand the loaded Excel files to get sheet names and table details
+    ExpandedTables = Table.ExpandTableColumn(ImportExcel, "ExcelData", {"Name", "Data", "Kind", "Item"}, {"TableName", "Data", "Kind", "SheetName"}),
+
+    // Step 4: Filter to include only tables named "GDP_PPP_Per_Capita"
+    FilteredTargetTables = Table.SelectRows(ExpandedTables, each [Kind] = "Table" and [TableName] = "GDP_PPP_Per_Capita"),
+
+    // Step 5: Extract relevant columns for analysis
+    ExtractColumns = Table.AddColumn(FilteredTargetTables, "FormattedData", each 
+        Table.SelectColumns([Data], {
+            "Country ID", "Country Name", "Country ISO Code", "Year", "GDP PPP per Capita"
+        })
+    ),
+
+    // Step 6: Filter out rows where the formatted data is null
     FilteredFormatted = Table.SelectRows(ExtractColumns, each [FormattedData] <> null),
+
+    // Step 7: Add metadata to the data (file name and sheet name)
     WithMetadata = Table.AddColumn(FilteredFormatted, "FormattedWithMetadata", each 
         Table.AddColumn(
             Table.AddColumn([FormattedData], "Source File", (x) => [Name]),
             "Sheet Name", (x) => [SheetName]
         )
     ),
+
+    // Step 8: Combine all tables into one consolidated table
     CombinedAll = Table.Combine(WithMetadata[FormattedWithMetadata]),
+
+    // Step 9: Filter rows (this step appears to be a placeholder and could be omitted)
     #"Filtered Rows" = Table.SelectRows(CombinedAll, each true),
+
+    // Step 10: Rename columns to match standard naming conventions
     #"Renamed Columns" = Table.RenameColumns(#"Filtered Rows",{{"Country ID", "Iso Code"}, {"Country Name", "Country"}}),
+
+    // Step 11: Filter rows (again, seems like an additional step with no filtering criteria)
     #"Filtered Rows1" = Table.SelectRows(#"Renamed Columns", each true),
+
+    // Step 12: Change column types to ensure correct data types (e.g., "GDP PPP per Capita" as number)
     #"Changed Type" = Table.TransformColumnTypes(#"Filtered Rows1",{{"GDP PPP per Capita", type number}})
 in
     #"Changed Type"
