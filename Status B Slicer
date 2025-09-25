@@ -1,0 +1,5 @@
+StatusB_Slicer = 
+DATATABLE("Status_B_Filter", STRING, {
+    {"Implemented"},
+    {"Abolished"}
+})
