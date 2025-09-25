@@ -1,0 +1,48 @@
+let
+    // Step 1: Reference the original table
+    Source = #"GDP PPP Per Capita (Raw)",
+
+    // Step 2: Filter to only income-level rows
+    IncomeGroups = Table.SelectRows(Source, each 
+        List.Contains(
+            {"Low income", "Lower middle income", "Middle income", "Upper middle income", "High income"},
+            Text.Trim([Country])
+        ) and [#"GDP PPP per Capita"] <> null
+    ),
+
+    // Step 3: Sort by Year and GDP PPP per Capita
+    SortedRows = Table.Sort(IncomeGroups, {
+        {"Year", Order.Ascending}, 
+        {"GDP PPP per Capita", Order.Ascending}
+    }),
+
+    // Step 4: Remove duplicates by Year and Income Group (keep first)
+    RemovedDuplicates = Table.Distinct(SortedRows, {"Year", "Country"}),
+
+    // Step 5: Add an Index to assist with "next row" logic
+    IndexedRows = Table.AddIndexColumn(RemovedDuplicates, "Index", 0, 1, Int64.Type),
+
+    // Step 6: Add MaxGDP from next row (if same year)
+    AddMaxGDP = Table.AddColumn(IndexedRows, "MaxGDP", (row) =>
+        let
+            currentIndex = row[Index],
+            currentYear = row[Year],
+            nextRow = try IndexedRows{currentIndex + 1} otherwise null,
+            maxGDP = if nextRow <> null and nextRow[Year] = currentYear then nextRow[#"GDP PPP per Capita"] else null
+        in
+            maxGDP
+    ),
+
+    // Step 7: Rename columns for clarity
+    Renamed = Table.RenameColumns(AddMaxGDP, {
+        {"Country", "Income Group"},
+        {"GDP PPP per Capita", "MinGDP"}
+    }),
+
+    // Step 8: Keep only necessary columns
+    Final = Table.SelectColumns(Renamed, {"Year", "Income Group", "MinGDP", "MaxGDP"}),
+
+    // Step 9: Add join key
+    WithKey = Table.AddColumn(Final, "Year_IncomeGroup", each Text.From([Year]) & "_" & [Income Group], type text)
+in
+    WithKey
