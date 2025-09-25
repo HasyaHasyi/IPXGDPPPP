@@ -1,0 +1,5 @@
+StatusA_Slicer = 
+DATATABLE("Status_A_Filter", STRING, {
+    {"Implemented"},  // Row 1: "Implemented" status for filtering
+    {"Abolished"}     // Row 2: "Abolished" status for filtering
+})

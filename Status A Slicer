@@ -1,5 +1,0 @@
-StatusA_Slicer = 
-DATATABLE("Status_A_Filter", STRING, {
-    {"Implemented"},
-    {"Abolished"}
-})
