@@ -1,0 +1,57 @@
+let
+    // Step 1: Retrieve GNI per capita data from World Bank API
+    FirstPageGNI = Json.Document(Web.Contents(
+        "https://api.worldbank.org/v2/country/all/indicator/NY.GNP.PCAP.CD", 
+        [Query = [format = "json", per_page = "1000", page = "1"]]
+    )),
+    GniPageCount = FirstPageGNI{0}[pages],
+    GniPageNumbers = List.Numbers(1, GniPageCount),
+
+    // Function to retrieve each page of GNI data
+    GetGniPage = (page) =>
+        let
+            Raw = Json.Document(Web.Contents(
+                "https://api.worldbank.org/v2/country/all/indicator/NY.GNP.PCAP.CD", 
+                [Query = [format = "json", per_page = "1000", page = Text.From(page)]]
+            )),
+            Data = Raw{1}
+        in
+            Data,
+
+    // Combine all pages of GNI data into one list
+    AllGniPages = List.Combine(List.Transform(GniPageNumbers, each GetGniPage(_))),
+    GniTableRaw = Table.FromList(AllGniPages, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    GniExpanded = Table.ExpandRecordColumn(GniTableRaw, "Column1", {
+        "country", "countryiso3code", "date", "value"
+    }),
+    GniExpandedCountry = Table.ExpandRecordColumn(GniExpanded, "country", {"id", "value"}, {"Country ID", "Country Name"}),
+
+    // Step 2: Clean and filter GNI data
+    GniCleaned = Table.RenameColumns(GniExpandedCountry, {
+        {"countryiso3code", "Country ISO Code"},
+        {"date", "Year"},
+        {"value", "GNI per Capita"}
+    }),
+    GniFiltered = Table.SelectRows(GniCleaned, each [Year] >= "2020"),
+    GniTyped = Table.TransformColumnTypes(GniFiltered, {
+        {"GNI per Capita", type number},
+        {"Year", Int64.Type},
+        {"Country ISO Code", type text}
+    }),
+
+    // Step 3: Retrieve GDP PPP per capita data from World Bank API
+    FirstPageResponse = Json.Document(Web.Contents(
+        "https://api.worldbank.org/v2/country/all/indicator/NY.GDP.PCAP.PP.CD", 
+        [Query = [format = "json", per_page = "1000", page = "1"]]
+    )),
+    PageCount = FirstPageResponse{0}[pages],
+
+    // Generate a list of page numbers for pagination
+    PageNumbers = List.Numbers(1, PageCount),
+
+    // Function to retrieve each page of GDP data
+    GetPage = (page) =>
+        let
+            Raw = Json.Document(Web.Contents(
+                "https://api.worldbank.org/v2/country/all/indicator/NY.GDP.PCAP.PP.CD", 
+                [Query = [format = "json", per_page = "100_]()]()
